@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+{% comment %} {% load cache %} {% endcomment %}
+{% include 'includes/switcher.html' %}
+  <div class="container py-5">
+    <h1>Подписки</h1>
+    {% comment %} {% cache 20 index_page %} {% endcomment %}
+    {% for post in page_obj %}
+      {% include 'includes/post_info.html' with show_group_link=True show_post_link=True %}  
+    {% endfor %}
+    {% comment %} {% endcache %} {% endcomment %}
+    {% include 'includes/paginator.html' %}  
+{% endblock %}
