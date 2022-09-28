@@ -87,4 +87,4 @@ class Follow(models.Model):
     )
 
     def __str__(self) -> str:
-        return f'{self.user.username} {self.author}'
+        return f'Подписчик^{self.user}, автор: {self.author}'

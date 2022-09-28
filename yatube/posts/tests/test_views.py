@@ -8,7 +8,7 @@ from django.conf import settings
 from django.urls import reverse
 from django.core.cache import cache
 
-from ..models import Group, Post, User, Comment
+from ..models import Group, Post, User, Comment, Follow
 
 
 TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
@@ -20,6 +20,7 @@ class PostPagesTest(TestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.user = User.objects.create_user(username='KirilMefodiy')
+        cls.user_follower = User.objects.create_user(username='follower')
         cls.small_gif = (
             b'\x47\x49\x46\x38\x39\x61\x02\x00'
             b'\x01\x00\x80\x00\x00\x00\x00\x00'
@@ -42,7 +43,7 @@ class PostPagesTest(TestCase):
             ),
             image=cls.uploaded,
         )
-        cls.comment = Comment.objects.create(
+        cls.comments = Comment.objects.create(
             post=cls.post,
             text='Что-то там',
             author=cls.user
@@ -88,8 +89,11 @@ class PostPagesTest(TestCase):
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
+        self.guest_client = Client()
         self.authorized_client = Client()
         self.authorized_client.force_login(self.user)
+        self.client_auth_follower = Client()
+        self.client_auth_follower.force_login(self.user_follower)
 
     def test_pages_uses_correct_template(self):
         """URL-адрес использует соответствующий шаблон."""
@@ -109,7 +113,7 @@ class PostPagesTest(TestCase):
     def test_page_show_correct_context(self):
         """
         Шаблон index, group_list, post_detail
-        сформирован с правильным контекстом.
+        profile сформирован с правильным контекстом.
         """
         pages_with = [
             PostPagesTest.templates_pages_names['index']['url'],
@@ -124,22 +128,10 @@ class PostPagesTest(TestCase):
                 post = response.context.get('post')
                 self.check_post_fields(post)
 
-    # def test_profile_correct_context(self):
-    #     """Шаблон profile сформирован с правильным контекстом"""
-    #     response = self.authorized_client.get(
-    #         PostPagesTest.templates_pages_names['profile']['url']
-    #     )
-    #     first_object = response.context['page_obj'][0]
-    #     post_text_0 = first_object.text
-    #     text_post = PostPagesTest.post.text
-    #     author_post = PostPagesTest.user.username
-    #     self.assertEqual(response.context['author'].username, author_post)
-    #     self.assertEqual(post_text_0, text_post)
-
     def test_show_correct_context(self):
         """
         Шаблон post_create(edit), post_create
-        сформирован с правильным контекстом
+        сформирован с правильным контекстом.
         """
         cache.clear()
         pages_with = [
@@ -158,17 +150,16 @@ class PostPagesTest(TestCase):
                     self.assertIsInstance(form_field, expected)
 
     def test_post_another_group(self):
-        """Пост не попал в другую группу"""
+        """Пост не попал в другую группу."""
         response = self.authorized_client.get(
             PostPagesTest.templates_pages_names['group_list']['url']
         )
         first_object = response.context['page_obj'][0]
-        post_text_0 = first_object.text
         text_post = PostPagesTest.post.text
-        self.assertTrue(post_text_0, text_post)
+        self.assertTrue(first_object.text, text_post)
 
     def test_page_paginator(self):
-        """Проверка пагинатора"""
+        """Проверка пагинатора."""
         pages_with_paginator = [
             PostPagesTest.templates_pages_names['index']['url'],
             PostPagesTest.templates_pages_names['group_list']['url'],
@@ -193,19 +184,43 @@ class PostPagesTest(TestCase):
 
     def test_comment_context(self):
         """
-        После успешной отправки комментарий
-        появляется на странице поста
+        Авторизованный может создавать комменты,
+        не авторизованный нет,
+        после успешной отправки комментарий
+        появляется на странице поста,
+        в шаблоне post_detail отображаются комментарии.
         """
-        response = self.authorized_client.get(
+        count_comments = Comment.objects.count()
+        form_data = {
+            'text': 'комментарий'
+        }
+        self.authorized_client.post(
+            reverse(
+                'posts:add_comment',
+                kwargs={'post_id': self.post.pk}
+            ),
+            data=form_data,
+            follow=True
+        )
+        self.assertEqual(Comment.objects.count(), count_comments + 1)
+        response = self.guest_client.post(
+            reverse(
+                'posts:add_comment',
+                kwargs={'post_id': self.post.pk}
+            )
+        )
+        self.assertRedirects(
+            response,
+            f'/auth/login/?next=/posts/{self.post.pk}/comment/'
+        )
+        response = self.authorized_client.post(
             PostPagesTest.templates_pages_names['post_detail']['url']
         )
-        comments_of_page = response.context.get('comments')
-        for comment in comments_of_page:
-            with self.subTest(comment=comment):
-                self.assertEqual(comment.text, PostPagesTest.comment.text)
+        post = response.context.get('post')
+        self.assertIn(PostPagesTest.comments, post.comments.all())
 
     def test_cache_index(self):
-        """Тест кэширования страницы index.html"""
+        """Тест кэширования страницы index."""
         first_state = self.authorized_client.get(
             PostPagesTest.templates_pages_names['index']['url']
         )
@@ -221,3 +236,76 @@ class PostPagesTest(TestCase):
             PostPagesTest.templates_pages_names['index']['url']
         )
         self.assertNotEqual(first_state.content, third_state.content)
+
+    def test_follow(self):
+        """У подписчика отображаются подписки."""
+        self.client_auth_follower.get(
+            reverse(
+                'posts:profile_follow',
+                kwargs={
+                    'username':
+                    PostPagesTest.user
+                }
+            )
+        )
+        self.assertEqual(Follow.objects.all().count(), 1)
+
+    def test_unfollow(self):
+        """При отписки проподают подписчики."""
+        self.client_auth_follower.get(
+            reverse(
+                'posts:profile_follow',
+                kwargs={
+                    'username':
+                    PostPagesTest.user
+                }
+            )
+        )
+        self.client_auth_follower.get(
+            reverse(
+                'posts:profile_unfollow',
+                kwargs={
+                    'username':
+                    PostPagesTest.user
+                }
+            )
+        )
+        self.assertEqual(Follow.objects.all().count(), 0)
+
+    def test_subscription_feed(self):
+        """Запись появляется в ленте подписчиков."""
+        Follow.objects.create(
+            user=PostPagesTest.user_follower,
+            author=PostPagesTest.user
+        )
+        response = self.client_auth_follower.get('/follow/')
+        post_text_0 = response.context["page_obj"][0].text
+        self.assertEqual(
+            post_text_0,
+            'Текст поста'
+        )
+        response = self.authorized_client.get('/follow/')
+        self.assertNotContains(
+            response,
+            'Текст поста'
+        )
+
+        address_redirect = [
+            (
+                reverse(
+                    'posts:profile_follow',
+                    kwargs={
+                        'username': {
+                            'username': PostPagesTest.user.username
+                        }
+                    }
+                ),
+                f'/auth/login/?next=/profile/%257B%27username%27%3A%2520%27'
+                f'{PostPagesTest.user.username}%27%257D/follow/'
+            ),
+        ]
+
+        for adress, temlate in address_redirect:
+            with self.subTest():
+                response = self.guest_client.get(adress)
+                self.assertRedirects(response, temlate)

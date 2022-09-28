@@ -18,15 +18,21 @@ class PostUrlTests(TestCase):
             title=('Заголовок для тестовой группы'),
             slug='test_slug'
         )
+        cls.url_redirect = [
+            (f'/posts/{cls.post.pk}/comment/', f'/posts/{cls.post.pk}/'),
+            (f'/profile/{cls.user.username}/follow/', f'/profile/{cls.user.username}/'),
+            (f'/profile/{cls.user.username}/unfollow/', f'/profile/{cls.user.username}/')
+        ]
         cls.privat_url_templates = [
             ('/create/', 'posts/create_post.html'),
-            (f'/posts/{cls.post.pk}/edit/', 'posts/create_post.html')
+            (f'/posts/{cls.post.pk}/edit/', 'posts/create_post.html'),
+            # ('/follow/', 'posts/follow.html'),
         ]
         cls.pablic_url_templates = [
             ('/', 'posts/index.html'),
-            ('/group/test_slug/', 'posts/group_list.html'),
-            ('/profile/test_andrey/', 'posts/profile.html'),
-            ('/posts/1/', 'posts/post_detail.html')
+            (f'/group/{cls.group.slug}/', 'posts/group_list.html'),
+            (f'/profile/{cls.user.username}/', 'posts/profile.html'),
+            (f'/posts/{cls.post.pk}/', 'posts/post_detail.html')
         ]
         cls.address_create = '/create/'
         cls.address_edit = f'/posts/{cls.post.pk}/edit/'
@@ -81,3 +87,10 @@ class PostUrlTests(TestCase):
             with self.subTest(address=address):
                 response = self.authorized_client_author.get(address)
                 self.assertTemplateUsed(response, template)
+
+    def test_urls_template(self):
+        """Адресса коментариев и подписок перенаправляются."""
+        for address, template in self.url_redirect:
+            with self.subTest(address=address):
+                response = self.authorized_client_author.get(address)
+                self.assertRedirects(response, template)

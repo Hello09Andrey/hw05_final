@@ -1,9 +1,10 @@
+from django.db.models import Prefetch
 from django.shortcuts import render, get_object_or_404
 from django.shortcuts import redirect
 from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 
-from .models import Post, Group, User, Follow
+from .models import Post, Group, User, Follow, Comment
 from .forms import PostForm, CommentForm
 from .utils import get_page_obj
 
@@ -38,30 +39,25 @@ def profile(request, username):
         author.posts.select_related('author', 'group'),
         request
     )
-    if request.user.is_authenticated:
-        following = Follow.objects.filter(
+    following = Follow.objects.filter(
             user=request.user, author=author
-        ).exists()
-    else:
-        following = False
-    # profile = author
+    ).exists()
     context = {
         'author': author,
         'page_obj': page_obj,
         'following': following,
-        # 'profile': profile
     }
     return render(request, 'posts/profile.html', context)
 
 
 def post_detail(request, post_id):
-    post = get_object_or_404(Post, pk=post_id)
-    comments = post.comments.all()
-    form = CommentForm(request.POST)
+    from django.db import connection
+    post = get_object_or_404(Post.objects.prefetch_related('comments'),pk=post_id)
+    print(len(connection.queries))
+    form = CommentForm(request.POST or None)
     context = {
         'form': form,
         'post': post,
-        'comments': comments,
     }
     return render(request, 'posts/post_detail.html', context)
 
@@ -131,7 +127,6 @@ def follow_index(request):
         ), request
     )
     context = {'page_obj': page_obj}
-    # информация о текущем пользователе доступна в переменной request.user
     return render(request, 'posts/follow.html', context)
 
 
@@ -147,7 +142,6 @@ def profile_follow(request, username):
 
 @login_required
 def profile_unfollow(request, username):
-    # Дизлайк, отписка
     author = get_object_or_404(User, username=username)
     is_follower = Follow.objects.filter(user=request.user, author=author)
     if is_follower.exists():
