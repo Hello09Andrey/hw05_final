@@ -5,7 +5,6 @@
       <div class="container py-5"> 
         <h1>Все посты пользователя {{ author.get_full_name }} </h1> 
         <h3>Всего постов: {{ author.posts.count }} </h3>  
-        {% if user.is_authenticated %}
                       <div class="mb-5"> 
                         {% if user != author %} 
                           {% if following %} 
@@ -25,7 +24,7 @@
                         {% endif %} 
                         {% endif %} 
                       </div> 
-        {% endif %}
+
         {% for post in page_obj %}      
       {% include 'includes/post_info.html' with show_group_link=True %}        
     {% endfor %} 

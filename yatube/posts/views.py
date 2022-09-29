@@ -39,9 +39,12 @@ def profile(request, username):
         author.posts.select_related('author', 'group'),
         request
     )
-    following = Follow.objects.filter(
-            user=request.user, author=author
-    ).exists()
+    if request.user.is_authenticated: 
+        following = Follow.objects.filter( 
+            user=request.user, author=author 
+        ).exists() 
+    else: 
+        following = False 
     context = {
         'author': author,
         'page_obj': page_obj,
@@ -51,9 +54,15 @@ def profile(request, username):
 
 
 def post_detail(request, post_id):
-    from django.db import connection
-    post = get_object_or_404(Post.objects.prefetch_related('comments'),pk=post_id)
-    print(len(connection.queries))
+    post = get_object_or_404(
+        Post.objects.prefetch_related(
+            Prefetch(
+                'comments',
+                queryset=Comment.objects.select_related('author')
+            )
+        ),
+        pk=post_id
+    )
     form = CommentForm(request.POST or None)
     context = {
         'form': form,
