@@ -89,6 +89,7 @@ class PostPagesTest(TestCase):
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
+        cache.clear()
         self.guest_client = Client()
         self.authorized_client = Client()
         self.authorized_client.force_login(self.user)
@@ -123,7 +124,7 @@ class PostPagesTest(TestCase):
         ]
         for page in pages_with:
             with self.subTest(page=page):
-                cache.clear()
+                # cache.clear()
                 response = self.authorized_client.get(page)
                 post = response.context.get('post')
                 self.check_post_fields(post)
@@ -182,14 +183,8 @@ class PostPagesTest(TestCase):
                     )
                     self.assertEqual(len(response.context['page_obj']), posts)
 
-    def test_comment_context(self):
-        """
-        Авторизованный может создавать комменты,
-        не авторизованный нет,
-        после успешной отправки комментарий
-        появляется на странице поста,
-        в шаблоне post_detail отображаются комментарии.
-        """
+    def test_authorized_add_comment(self):
+        """Авторизованный может создавать комменты."""
         count_comments = Comment.objects.count()
         form_data = {
             'text': 'комментарий'
@@ -203,6 +198,9 @@ class PostPagesTest(TestCase):
             follow=True
         )
         self.assertEqual(Comment.objects.count(), count_comments + 1)
+
+    def test_guest_not_add_comment(self):
+        """Не авторизованный не может оставлять комментарии."""
         response = self.guest_client.post(
             reverse(
                 'posts:add_comment',
@@ -213,6 +211,9 @@ class PostPagesTest(TestCase):
             response,
             f'/auth/login/?next=/posts/{self.post.pk}/comment/'
         )
+
+    def test_comment_context(self):
+        """В шаблоне post_detail отображаются комментарии."""
         response = self.authorized_client.post(
             PostPagesTest.templates_pages_names['post_detail']['url']
         )
@@ -237,29 +238,30 @@ class PostPagesTest(TestCase):
         )
         self.assertNotEqual(first_state.content, third_state.content)
 
-    def test_follow(self):
-        """У подписчика отображаются подписки."""
-        self.client_auth_follower.get(
-            reverse(
-                'posts:profile_follow',
-                kwargs={
-                    'username':
-                    PostPagesTest.user
-                }
-            )
+    def test_subscription_feed(self):
+        """Запись появляется в ленте подписчика."""
+        Follow.objects.create(
+            user=PostPagesTest.user_follower,
+            author=PostPagesTest.user
         )
-        self.assertEqual(Follow.objects.all().count(), 1)
+        response = self.client_auth_follower.get(reverse('posts:follow_index'))
+        post_text_0 = response.context["page_obj"][0].text
+        post_author_0 = response.context["page_obj"][0].author
+        post_group_0 = response.context["page_obj"][0].group
+        self.assertEqual(post_text_0, PostPagesTest.post.text)
+        self.assertEqual(post_author_0, PostPagesTest.post.author)
+        self.assertEqual(post_group_0, PostPagesTest.post.group)
+
+    def test_subscription_feed(self):
+        """Пост не появляется, если пользователь не подписан на автора."""
+        response = self.authorized_client.get(reverse('posts:follow_index'))
+        self.assertNotContains(response, PostPagesTest.post.text)
 
     def test_unfollow(self):
-        """При отписки проподают подписчики."""
-        self.client_auth_follower.get(
-            reverse(
-                'posts:profile_follow',
-                kwargs={
-                    'username':
-                    PostPagesTest.user
-                }
-            )
+        """При отписке посты автора проподают."""
+        Follow.objects.create(
+            user=PostPagesTest.user_follower,
+            author=PostPagesTest.user
         )
         self.client_auth_follower.get(
             reverse(
@@ -270,42 +272,5 @@ class PostPagesTest(TestCase):
                 }
             )
         )
-        self.assertEqual(Follow.objects.all().count(), 0)
-
-    def test_subscription_feed(self):
-        """Запись появляется в ленте подписчиков."""
-        Follow.objects.create(
-            user=PostPagesTest.user_follower,
-            author=PostPagesTest.user
-        )
-        response = self.client_auth_follower.get('/follow/')
-        post_text_0 = response.context["page_obj"][0].text
-        self.assertEqual(
-            post_text_0,
-            'Текст поста'
-        )
-        response = self.authorized_client.get('/follow/')
-        self.assertNotContains(
-            response,
-            'Текст поста'
-        )
-
-        address_redirect = [
-            (
-                reverse(
-                    'posts:profile_follow',
-                    kwargs={
-                        'username': {
-                            'username': PostPagesTest.user.username
-                        }
-                    }
-                ),
-                f'/auth/login/?next=/profile/%257B%27username%27%3A%2520%27'
-                f'{PostPagesTest.user.username}%27%257D/follow/'
-            ),
-        ]
-
-        for adress, temlate in address_redirect:
-            with self.subTest():
-                response = self.guest_client.get(adress)
-                self.assertRedirects(response, temlate)
+        response = self.client_auth_follower.get(reverse('posts:follow_index'))
+        self.assertNotContains(response, PostPagesTest.post.text)

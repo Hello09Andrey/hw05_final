@@ -66,13 +66,6 @@ class PostUrlTests(TestCase):
         response = self.authorized_client.get(PostUrlTests.address_edit)
         self.assertEqual(response.status_code, HTTPStatus.FOUND)
 
-    def test_private_url(self):
-        """Без авторизации приватные URL недоступны."""
-        for adress, temlate in PostUrlTests.privat_url_templates:
-            with self.subTest():
-                response = self.guest_client.get(adress)
-                self.assertEqual(response.status_code, HTTPStatus.FOUND)
-
     def test_page_404(self):
         """
         Запрос к несуществующей странице
@@ -94,9 +87,28 @@ class PostUrlTests(TestCase):
                 response = self.authorized_client_author.get(address)
                 self.assertTemplateUsed(response, template)
 
-    def test_urls_template(self):
+    def test_urls_user_redirect_template(self):
         """Адресса коментариев и подписок перенаправляются."""
         for address, template in self.url_redirect:
             with self.subTest(address=address):
                 response = self.authorized_client_author.get(address)
                 self.assertRedirects(response, template)
+
+    def test_private_url(self):
+        """
+        Без авторизации пользователь будет
+        перенаправлен на на страицу логина.
+        """
+        adress_redirect = [
+            ('/create/', '/auth/login/?next=/create/'),
+            (
+                f'/posts/{self.post.pk}/edit/',
+                f'/auth/login/?next=/posts/{self.post.pk}/edit/'
+            ),
+            ('/follow/', '/auth/login/?next=/follow/'),
+        ]
+
+        for adress, temlate in adress_redirect:
+            with self.subTest():
+                response = self.guest_client.get(adress)
+                self.assertRedirects(response, temlate)
