@@ -2,7 +2,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from http import HTTPStatus
 
-from posts.models import Group, Post, User, Comment, Follow
+from posts.models import Group, Post, User, Comment
 
 
 class PostCreateFormTests(TestCase):
@@ -84,7 +84,7 @@ class PostCreateFormTests(TestCase):
                 self.assertRedirects(response, temlate)
 
     def test_authorized_edit_post(self):
-        """Авторизованный может редактировать"""
+        """Авторизованный может редактировать."""
         self.authorized_client.post(
             reverse('posts:post_create'),
             data=PostCreateFormTests.form_data,
@@ -135,7 +135,7 @@ class PostCreateFormTests(TestCase):
         """
         Неавторизоанный не может писать коменты
         и перенапрвляется на страницу логина,
-        а авторизованный может писать коменты
+        а авторизованный может писать коменты.
         """
         task_comment = Comment.objects.count()
         post = Post.objects.create(

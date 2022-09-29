@@ -39,12 +39,13 @@ def profile(request, username):
         author.posts.select_related('author', 'group'),
         request
     )
-    if request.user.is_authenticated: 
-        following = Follow.objects.filter( 
-            user=request.user, author=author 
-        ).exists() 
-    else: 
-        following = False 
+
+    if request.user.is_authenticated:
+        following = Follow.objects.filter(
+            user=request.user, author=author
+        ).exists()
+    else:
+        following = False
     context = {
         'author': author,
         'page_obj': page_obj,

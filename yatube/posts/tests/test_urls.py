@@ -20,13 +20,19 @@ class PostUrlTests(TestCase):
         )
         cls.url_redirect = [
             (f'/posts/{cls.post.pk}/comment/', f'/posts/{cls.post.pk}/'),
-            (f'/profile/{cls.user.username}/follow/', f'/profile/{cls.user.username}/'),
-            (f'/profile/{cls.user.username}/unfollow/', f'/profile/{cls.user.username}/')
+            (
+                f'/profile/{cls.user.username}/follow/',
+                f'/profile/{cls.user.username}/'
+            ),
+            (
+                f'/profile/{cls.user.username}/unfollow/',
+                f'/profile/{cls.user.username}/'
+            )
         ]
         cls.privat_url_templates = [
             ('/create/', 'posts/create_post.html'),
             (f'/posts/{cls.post.pk}/edit/', 'posts/create_post.html'),
-            # ('/follow/', 'posts/follow.html'),
+            ('/follow/', 'posts/follow.html'),
         ]
         cls.pablic_url_templates = [
             ('/', 'posts/index.html'),
@@ -46,7 +52,7 @@ class PostUrlTests(TestCase):
         self.authorized_client_author.force_login(PostUrlTests.user_author)
 
     def test_urls_for_all_client(self):
-        """Доступные URL без авторизации"""
+        """Доступные URL без авторизации."""
         for url, template in PostUrlTests.pablic_url_templates:
             with self.subTest():
                 response = self.guest_client.get(url)
@@ -61,7 +67,7 @@ class PostUrlTests(TestCase):
         self.assertEqual(response.status_code, HTTPStatus.FOUND)
 
     def test_private_url(self):
-        """Без авторизации приватные URL недоступны"""
+        """Без авторизации приватные URL недоступны."""
         for adress, temlate in PostUrlTests.privat_url_templates:
             with self.subTest():
                 response = self.guest_client.get(adress)
@@ -70,7 +76,7 @@ class PostUrlTests(TestCase):
     def test_page_404(self):
         """
         Запрос к несуществующей странице
-        и использование кастомного шаблона
+        и использование кастомного шаблона.
         """
         for address, template in PostUrlTests.address_none:
             with self.subTest(address=address):
