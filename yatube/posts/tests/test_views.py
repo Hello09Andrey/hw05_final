@@ -19,6 +19,7 @@ class PostPagesTest(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        cls.user_none = User.objects.create_user(username='None')
         cls.user = User.objects.create_user(username='KirilMefodiy')
         cls.user_follower = User.objects.create_user(username='follower')
         cls.small_gif = (
@@ -95,6 +96,8 @@ class PostPagesTest(TestCase):
         self.authorized_client.force_login(self.user)
         self.client_auth_follower = Client()
         self.client_auth_follower.force_login(self.user_follower)
+        self.authorized_no_follower = Client()
+        self.authorized_no_follower.force_login(self.user_none)
 
     def test_pages_uses_correct_template(self):
         """URL-адрес использует соответствующий шаблон."""
@@ -150,14 +153,31 @@ class PostPagesTest(TestCase):
                     form_field = response.context['form'].fields[value]
                     self.assertIsInstance(form_field, expected)
 
-    def test_post_another_group(self):
-        """Пост не попал в другую группу."""
+    def test_post_group(self):
+        """Пост попал в нужную группу."""
         response = self.authorized_client.get(
             PostPagesTest.templates_pages_names['group_list']['url']
         )
         first_object = response.context['page_obj'][0]
         text_post = PostPagesTest.post.text
         self.assertTrue(first_object.text, text_post)
+
+    def test_post_another_group(self):
+        """Пост не попал в другую группу."""
+        post = Post.objects.create(
+            text='Текст поста 2',
+            author=self.user,
+            group=Group.objects.create(
+                title='Заголовок для тестовой группы 2',
+                slug='test_slug2'
+            ),
+        )
+        response = self.authorized_client.get(
+            reverse(
+                'posts:group_list', kwargs={'slug': 'test_slug'}
+            )
+        )
+        self.assertNotContains(response, post.text)
 
     def test_page_paginator(self):
         """Проверка пагинатора."""
@@ -199,8 +219,28 @@ class PostPagesTest(TestCase):
         )
         self.assertEqual(Comment.objects.count(), count_comments + 1)
 
+    def test_context_comment(self):
+        """Наличие комментария с нужным context."""
+        response = self.authorized_client.post(
+            PostPagesTest.templates_pages_names['post_detail']['url']
+        )
+        post = response.context.get('post')
+        self.assertEqual(
+            post.comments.first().text,
+            PostPagesTest.post.comments.first().text
+        )
+        self.assertEqual(
+            post.comments.first().author,
+            PostPagesTest.post.comments.first().author
+        )
+        self.assertEqual(
+            post.comments.first().post,
+            PostPagesTest.post.comments.first().post
+        )
+
     def test_guest_not_add_comment(self):
         """Не авторизованный не может оставлять комментарии."""
+        amount_comments = Comment.objects.count()
         response = self.guest_client.post(
             reverse(
                 'posts:add_comment',
@@ -211,6 +251,7 @@ class PostPagesTest(TestCase):
             response,
             f'/auth/login/?next=/posts/{self.post.pk}/comment/'
         )
+        self.assertEqual(amount_comments, Comment.objects.count())
 
     def test_comment_context(self):
         """В шаблоне post_detail отображаются комментарии."""
@@ -245,17 +286,21 @@ class PostPagesTest(TestCase):
             author=PostPagesTest.user
         )
         response = self.client_auth_follower.get(reverse('posts:follow_index'))
-        post_text_0 = response.context["page_obj"][0].text
-        post_author_0 = response.context["page_obj"][0].author
-        post_group_0 = response.context["page_obj"][0].group
-        self.assertEqual(post_text_0, PostPagesTest.post.text)
-        self.assertEqual(post_author_0, PostPagesTest.post.author)
-        self.assertEqual(post_group_0, PostPagesTest.post.group)
+        post = response.context["page_obj"][0]
+        self.assertEqual(post.text, PostPagesTest.post.text)
+        self.assertEqual(post.author, PostPagesTest.post.author)
+        self.assertEqual(post.group, PostPagesTest.post.group)
 
     def test_subscription_feed(self):
         """Пост не появляется, если пользователь не подписан на автора."""
-        response = self.authorized_client.get(reverse('posts:follow_index'))
-        self.assertNotContains(response, PostPagesTest.post.text)
+        new_post = Post.objects.create(
+            text='Текст поста21',
+            author=self.user_none,
+        )
+        response = self.authorized_no_follower.get(
+            reverse('posts:follow_index')
+        )
+        self.assertNotContains(response, new_post.text)
 
     def test_unfollow(self):
         """При отписке посты автора проподают."""
@@ -263,6 +308,9 @@ class PostPagesTest(TestCase):
             user=PostPagesTest.user_follower,
             author=PostPagesTest.user
         )
+        amount_follower = Follow.objects.filter(
+            author=PostPagesTest.user
+        ).count()
         self.client_auth_follower.get(
             reverse(
                 'posts:profile_unfollow',
@@ -272,5 +320,26 @@ class PostPagesTest(TestCase):
                 }
             )
         )
-        response = self.client_auth_follower.get(reverse('posts:follow_index'))
-        self.assertNotContains(response, PostPagesTest.post.text)
+        self.assertEqual(
+            Follow.objects.filter(author=PostPagesTest.user).count(),
+            amount_follower - 1
+        )
+
+    def test_authorized_client_can_follow(self):
+        """Авторизованный клиент может подписываться."""
+        amount_follower = Follow.objects.filter(
+            author=PostPagesTest.user
+        ).count()
+        self.client_auth_follower.get(
+            reverse(
+                'posts:profile_follow',
+                kwargs={
+                    'username':
+                    PostPagesTest.user
+                }
+            )
+        )
+        self.assertEqual(
+            amount_follower + 1,
+            Follow.objects.filter(author=PostPagesTest.user).count()
+        )
