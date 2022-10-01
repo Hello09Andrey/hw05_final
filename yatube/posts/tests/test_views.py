@@ -1,3 +1,4 @@
+from genericpath import exists
 import shutil
 import tempfile
 
@@ -127,7 +128,6 @@ class PostPagesTest(TestCase):
         ]
         for page in pages_with:
             with self.subTest(page=page):
-                # cache.clear()
                 response = self.authorized_client.get(page)
                 post = response.context.get('post')
                 self.check_post_fields(post)
@@ -137,7 +137,6 @@ class PostPagesTest(TestCase):
         Шаблон post_create(edit), post_create
         сформирован с правильным контекстом.
         """
-        cache.clear()
         pages_with = [
             PostPagesTest.templates_pages_names['post_edit']['url'],
             PostPagesTest.templates_pages_names['post_create']['url'],
@@ -239,19 +238,20 @@ class PostPagesTest(TestCase):
         )
 
     def test_guest_not_add_comment(self):
-        """Не авторизованный не может оставлять комментарии."""
-        amount_comments = Comment.objects.count()
-        response = self.guest_client.post(
+        """
+        Проверка наличия комментария с
+        заданными полями (пост, автор) в БД.
+        """
+        self.guest_client.post(
             reverse(
                 'posts:add_comment',
                 kwargs={'post_id': self.post.pk}
             )
         )
-        self.assertRedirects(
-            response,
-            f'/auth/login/?next=/posts/{self.post.pk}/comment/'
-        )
-        self.assertEqual(amount_comments, Comment.objects.count())
+        self.assertTrue(Comment.objects.filter(
+            text=PostPagesTest.post.comments.first().text, 
+            author=PostPagesTest.user,
+            post=PostPagesTest.post).exists())
 
     def test_comment_context(self):
         """В шаблоне post_detail отображаются комментарии."""
@@ -303,7 +303,7 @@ class PostPagesTest(TestCase):
         self.assertNotContains(response, new_post.text)
 
     def test_unfollow(self):
-        """При отписке посты автора проподают."""
+        """При отписке, подписка на автора пропадает."""
         Follow.objects.create(
             user=PostPagesTest.user_follower,
             author=PostPagesTest.user
@@ -339,6 +339,14 @@ class PostPagesTest(TestCase):
                 }
             )
         )
+        response = self.client_auth_follower.get(
+            reverse(
+                'posts:follow_index'
+            )
+        )
+        post = response.context.get('post')
+        self.assertEqual(post.text, PostPagesTest.post.text)
+        self.assertEqual(post.author, PostPagesTest.user)
         self.assertEqual(
             amount_follower + 1,
             Follow.objects.filter(author=PostPagesTest.user).count()
