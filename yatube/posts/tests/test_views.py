@@ -1,4 +1,3 @@
-from genericpath import exists
 import shutil
 import tempfile
 
@@ -249,7 +248,7 @@ class PostPagesTest(TestCase):
             )
         )
         self.assertTrue(Comment.objects.filter(
-            text=PostPagesTest.post.comments.first().text, 
+            text=PostPagesTest.post.comments.first().text,
             author=PostPagesTest.user,
             post=PostPagesTest.post).exists())
 
