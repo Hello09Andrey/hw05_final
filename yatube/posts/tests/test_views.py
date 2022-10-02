@@ -242,10 +242,7 @@ class PostPagesTest(TestCase):
         заданными полями (пост, автор) в БД.
         """
         self.guest_client.post(
-            reverse(
-                'posts:add_comment',
-                kwargs={'post_id': self.post.pk}
-            )
+            PostPagesTest.templates_pages_names['post_detail']['url']
         )
         self.assertTrue(Comment.objects.filter(
             text=PostPagesTest.post.comments.first().text,
